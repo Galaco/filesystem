@@ -1,8 +1,8 @@
-[![GoDoc](https://godoc.org/github.com/galaco/lambda-core?status.svg)](https://godoc.org/github.com/galaco/lambda-core)
-[![Go report card](https://goreportcard.com/badge/github.com/galaco/lambda-core)](hhttps://goreportcard.com/report/github.com/galaco/lambda-core)
-[![GolangCI](https://golangci.com/badges/github.com/galaco/lambda-core.svg)](https://golangci.com/r/github.com/golang-source-engine)
-[![codecov](https://codecov.io/gh/golang-source-engine/branch/master/graph/badge.svg)](https://codecov.io/gh/golang-source-engine)
-[![CircleCI](https://circleci.com/gh/golang-source-engine.svg?style=svg)](https://circleci.com/gh/golang-source-engine)
+[![GoDoc](https://godoc.org/github.com/golang-source-engine/filesystem?status.svg)](https://godoc.org/github.com/golang-source-engine/filesystem)
+[![Go report card](https://goreportcard.com/badge/github.com/golang-source-engine/filesystem)](hhttps://goreportcard.com/report/github.com/golang-source-engine/filesystem)
+[![GolangCI](https://golangci.com/badges/github.com/golang-source-engine/filesystem.svg)](https://golangci.com/r/github.com/golang-source-engine/filesystem)
+[![codecov](https://codecov.io/gh/golang-source-engine/filesystem/branch/master/graph/badge.svg)](https://codecov.io/gh/golang-source-engine/filesystem)
+[![CircleCI](https://circleci.com/gh/golang-source-engine/filesystem.svg?style=svg)](https://circleci.com/gh/golang-source-engine/filesystem)
 
 # Filesystem
 
