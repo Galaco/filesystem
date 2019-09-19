@@ -1,8 +1,14 @@
 package filesystem
 
 import (
+	"errors"
 	"fmt"
 	"strings"
+)
+
+var (
+	// ErrorInvalidGameInfo
+	ErrorInvalidGameInfo = errors.New("gameinfo keyvalues do not match expected specification")
 )
 
 // FileNotFoundError

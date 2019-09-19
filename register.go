@@ -15,7 +15,15 @@ import (
 // will be returned will all paths that are invalid.
 func CreateFilesystemFromGameInfoDefinitions(basePath string, gameInfo *keyvalues.KeyValue, allowInvalidLocations bool) (*FileSystem, error) {
 	fs := NewFileSystem()
-	gameInfoNode, _ := gameInfo.Find("GameInfo")
+	var gameInfoNode *keyvalues.KeyValue
+	if gameInfo.Key() != "GameInfo" {
+		gameInfoNode, _ = gameInfo.Find("GameInfo")
+	} else {
+		gameInfoNode = gameInfo
+	}
+	if gameInfoNode == nil {
+		return nil, ErrorInvalidGameInfo
+	}
 	fsNode, _ := gameInfoNode.Find("FileSystem")
 
 	searchPathsNode, _ := fsNode.Find("SearchPaths")

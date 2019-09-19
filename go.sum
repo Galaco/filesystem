@@ -1,5 +1,6 @@
 github.com/galaco/KeyValues v1.3.1 h1:Mka6aZcMSrFawDAGTk7Y0mKHTlGmqiqfz1zIaHs5jYc=
 github.com/galaco/KeyValues v1.3.1/go.mod h1:EByNBjnai9BpKGMykvBD3G28R+L6OubVnRkvZrYxP2Y=
+github.com/galaco/KeyValues v1.4.0/go.mod h1:00r0hZpLlOBIHehyWAgUngjKPoo3vCVP25BgWLwOP7E=
 github.com/galaco/bsp v0.2.2 h1:BomFvMNrlG9AvtOLppfwoj1ToAYJukL0LEa8gRnjUxI=
 github.com/galaco/bsp v0.2.2/go.mod h1:2T3tF0vzvY0NBPrLGe0B5EEQrbG2F0Ur+HWnaSy9YA4=
 github.com/galaco/vpk2 v0.0.0-20181012095330-21e4d1f6c888 h1:QCMt6AZ5gwsJ3SNsvTULg/xjZIfmcbRWv6BBnkYNOWI=
