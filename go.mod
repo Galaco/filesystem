@@ -1,4 +1,4 @@
-module github.com/golang-source-engine/filesystem
+module github.com/galaco/filesystem
 
 go 1.12
 
