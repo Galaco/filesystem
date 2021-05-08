@@ -42,6 +42,21 @@ func CreateFilesystemFromGameInfoDefinitions(basePath string, gameInfo *keyvalue
 		gameInfoPathRegex := regexp.MustCompile(`(?i)\|gameinfo_path\|`)
 		if gameInfoPathRegex.MatchString(path) {
 			path = gameInfoPathRegex.ReplaceAllString(path, basePath+"/")
+
+			// Search for vpk directories in the top directory. Cannot confirm if this is actually accurate behaviour,
+			// but CS:GO doesn't include any explicit vpk definitions in it's gameinfo.txt
+			vpkDirectories,_ := filepath.Glob(basePath + "/*_dir.vpk")
+			for _,key := range vpkDirectories {
+				vpkHandle, err := openVPK(strings.TrimRight(key, "_dir.vpk"))
+				if err != nil {
+					if !allowInvalidLocations {
+						return nil, err
+					}
+					badPathErrorCollection.AddPath(path)
+					continue
+				}
+				fs.RegisterVpk(path, vpkHandle)
+			}
 		}
 
 		// Executable directory
@@ -52,6 +67,8 @@ func CreateFilesystemFromGameInfoDefinitions(basePath string, gameInfo *keyvalue
 		if strings.Contains(strings.ToLower(kv.Key()), "mod") && !strings.HasPrefix(path, basePath) {
 			path = basePath + "/../" + path
 		}
+
+		path = strings.ReplaceAll(path, "//", "/")
 
 		// Strip vpk extension, then load it
 		path = strings.Trim(strings.Trim(path, " "), "\"")
