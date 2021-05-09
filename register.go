@@ -55,7 +55,7 @@ func CreateFilesystemFromGameInfoDefinitions(basePath string, gameInfo *keyvalue
 					badPathErrorCollection.AddPath(path)
 					continue
 				}
-				fs.RegisterVpk(path, vpkHandle)
+				fs.RegisterVpk(key, vpkHandle)
 			}
 		}
 
