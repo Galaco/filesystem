@@ -1,6 +1,6 @@
 module github.com/galaco/filesystem
 
-go 1.12
+go 1.19
 
 require (
 	github.com/galaco/KeyValues v1.4.1
