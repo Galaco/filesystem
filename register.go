@@ -1,10 +1,11 @@
 package filesystem
 
 import (
-	"github.com/galaco/KeyValues"
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/galaco/KeyValues"
 )
 
 // CreateFilesystemFromGameInfoDefinitions Reads game resource data paths
@@ -45,8 +46,8 @@ func CreateFilesystemFromGameInfoDefinitions(basePath string, gameInfo *keyvalue
 
 			// Search for vpk directories in the top directory. Cannot confirm if this is actually accurate behaviour,
 			// but CS:GO doesn't include any explicit vpk definitions in it's gameinfo.txt
-			vpkDirectories,_ := filepath.Glob(basePath + "/*_dir.vpk")
-			for _,key := range vpkDirectories {
+			vpkDirectories, _ := filepath.Glob(basePath + "/*_dir.vpk")
+			for _, key := range vpkDirectories {
 				vpkHandle, err := openVPK(strings.TrimRight(key, "_dir.vpk"))
 				if err != nil {
 					if !allowInvalidLocations {

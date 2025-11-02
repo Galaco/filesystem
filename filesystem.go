@@ -2,19 +2,23 @@ package filesystem
 
 import (
 	"bytes"
-	"github.com/galaco/bsp/lumps"
-	"github.com/galaco/vpk2"
 	"io"
-	"io/ioutil"
 	"os"
 	"strings"
+
+	"github.com/galaco/vpk2"
 )
 
-// FileSystem
+type PakFile interface {
+	GetFile(filePath string) ([]byte, error)
+}
+
+// FileSystem implements a Source Engine style filesystem, prioritizing
+// pakfile, local directories, and vpk packages in that order.
 type FileSystem struct {
 	gameVPKs         map[string]vpk.VPK
 	localDirectories []string
-	pakFile          *lumps.Pakfile
+	pakFile          PakFile
 }
 
 // NewFileSystem returns a new filesystem
@@ -28,7 +32,7 @@ func NewFileSystem() *FileSystem {
 
 // PakFile returns loaded pakfile
 // There can only be 1 registered pakfile at once.
-func (fs *FileSystem) PakFile() *lumps.Pakfile {
+func (fs *FileSystem) PakFile() PakFile {
 	return fs.pakFile
 }
 
@@ -66,7 +70,7 @@ func (fs *FileSystem) UnregisterLocalDirectory(directory string) {
 
 // RegisterPakFile Set a pakfile to be used as an asset directory.
 // This would normally be called during each map load
-func (fs *FileSystem) RegisterPakFile(pakFile *lumps.Pakfile) {
+func (fs *FileSystem) RegisterPakFile(pakFile PakFile) {
 	fs.pakFile = pakFile
 }
 
@@ -109,7 +113,7 @@ func (fs *FileSystem) GetFile(filename string) (io.Reader, error) {
 		if _, err := os.Stat(dir + "\\" + searchPath); os.IsNotExist(err) {
 			continue
 		}
-		file, err := ioutil.ReadFile(dir + searchPath)
+		file, err := os.ReadFile(dir + searchPath)
 		if err != nil {
 			return nil, err
 		}
