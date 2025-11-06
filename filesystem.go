@@ -53,7 +53,11 @@ func (fs *FileSystem) UnregisterVpk(path string) {
 // RegisterLocalDirectory register a filesystem path as a valid
 // asset directory
 func (fs *FileSystem) RegisterLocalDirectory(directory string) {
-	fs.localDirectories = append(fs.localDirectories, directory)
+	realpath := directory
+	if strings.HasSuffix(realpath, "/") {
+		realpath = strings.TrimRight(realpath, "/")
+	}
+	fs.localDirectories = append(fs.localDirectories, realpath)
 }
 
 func (fs *FileSystem) UnregisterLocalDirectory(directory string) {
@@ -110,10 +114,11 @@ func (fs *FileSystem) GetFile(filename string) (io.Reader, error) {
 
 	// Fallback to local filesystem
 	for _, dir := range fs.localDirectories {
-		if _, err := os.Stat(dir + "\\" + searchPath); os.IsNotExist(err) {
+		realpath := dir + "/" + searchPath
+		if _, err := os.Stat(realpath); os.IsNotExist(err) {
 			continue
 		}
-		file, err := os.ReadFile(dir + searchPath)
+		file, err := os.ReadFile(realpath)
 		if err != nil {
 			return nil, err
 		}

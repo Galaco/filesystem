@@ -32,6 +32,18 @@ func CreateFilesystemFromGameInfoDefinitions(basePath string, gameInfo *keyvalue
 	basePath, _ = filepath.Abs(basePath)
 	basePath = strings.Replace(basePath, "\\", "/", -1)
 
+	// @NOTE: Kind of hacky.
+	// extract the game directory from the base path (e.g. cstrike)
+	// This is assumed to be where the gameinfo is located.
+	// Will be used to avoid paths defined relative to the game dir.
+	basePathLastFolderIndex := strings.LastIndex(basePath, "/")
+	gameDir := ""
+	gameRootPath := basePath
+	if basePathLastFolderIndex != -1 {
+		gameDir = basePath[basePathLastFolderIndex+1:]
+		gameRootPath = strings.TrimSuffix(basePath, "/"+gameDir)
+	}
+
 	badPathErrorCollection := NewInvalidResourcePathCollectionError()
 
 	for _, searchPath := range searchPaths {
@@ -63,10 +75,13 @@ func CreateFilesystemFromGameInfoDefinitions(basePath string, gameInfo *keyvalue
 		// Executable directory
 		allSourceEnginePathsRegex := regexp.MustCompile(`(?i)\|all_source_engine_paths\|`)
 		if allSourceEnginePathsRegex.MatchString(path) {
-			path = allSourceEnginePathsRegex.ReplaceAllString(path, basePath+"/../")
+			path = allSourceEnginePathsRegex.ReplaceAllString(path, gameRootPath+"/")
 		}
+
+		path = strings.TrimPrefix(path, gameDir+"/")
+
 		if strings.Contains(strings.ToLower(kv.Key()), "mod") && !strings.HasPrefix(path, basePath) {
-			path = basePath + "/../" + path
+			path = basePath + "/" + path
 		}
 
 		path = strings.ReplaceAll(path, "//", "/")
@@ -89,6 +104,17 @@ func CreateFilesystemFromGameInfoDefinitions(basePath string, gameInfo *keyvalue
 			if strings.HasSuffix(path, "/*") {
 				path = strings.Replace(path, "/*", "", -1)
 			}
+			// @TODO: handle relative paths properly
+			// For now, just assume non-absolute paths are relative to basePath
+			// Absolute paths start with / or \, or with a drive letter (X:/ or X:\) on Windows
+			if !((strings.HasPrefix(path, "/")) || (strings.HasPrefix(path, "\\")) || (len(path) > 3 && (path[1:3] == ":/" || path[1:3] == ":\\"))) {
+				path = basePath + "/" + path
+			}
+
+			// @TODO: Hack to fix the trailing '/.' current dir
+			path = strings.ReplaceAll(path, "/./", "/")
+			path = strings.TrimSuffix(path, "/.")
+
 			fs.RegisterLocalDirectory(path)
 		}
 	}
