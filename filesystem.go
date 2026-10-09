@@ -13,26 +13,25 @@ type PakFile interface {
 	GetFile(filePath string) ([]byte, error)
 }
 
-// FileSystem implements a Source Engine style filesystem, prioritizing
-// pakfile, local directories, and vpk packages in that order.
+// FileSystem implements a Source Engine style filesystem. A file is read from the first place that has it: the
+// pakfile, then each search path in the order it was registered, which is the order gameinfo.txt lists them.
 type FileSystem struct {
-	// gameVPKs are searched in the order they were registered, which is the order gameinfo.txt lists them
-	gameVPKs         []registeredVPK
-	localDirectories []string
-	pakFile          PakFile
+	searchPaths []searchPath
+	pakFile     PakFile
 }
 
-type registeredVPK struct {
+// searchPath is a vpk, or a directory of loose files
+type searchPath struct {
 	path string
-	vpk  vpk.VPK
+	// vpk is nil for a directory
+	vpk *vpk.VPK
 }
 
 // NewFileSystem returns a new filesystem
 func NewFileSystem() *FileSystem {
 	return &FileSystem{
-		gameVPKs:         make([]registeredVPK, 0),
-		localDirectories: make([]string, 0),
-		pakFile:          nil,
+		searchPaths: make([]searchPath, 0),
+		pakFile:     nil,
 	}
 }
 
@@ -42,46 +41,43 @@ func (fs *FileSystem) PakFile() PakFile {
 	return fs.pakFile
 }
 
-// RegisterVpk registers a vpk package as a valid
-// asset directory. Vpks are searched in the order they are registered;
-// registering a path again replaces it without changing its place.
+// RegisterVpk adds a vpk package to the end of the search paths. Registering a path again replaces its vpk
+// without changing its place.
 func (fs *FileSystem) RegisterVpk(path string, vpkFile *vpk.VPK) {
-	for idx := range fs.gameVPKs {
-		if fs.gameVPKs[idx].path == path {
-			fs.gameVPKs[idx].vpk = *vpkFile
+	for idx := range fs.searchPaths {
+		if fs.searchPaths[idx].vpk != nil && fs.searchPaths[idx].path == path {
+			fs.searchPaths[idx].vpk = vpkFile
 			return
 		}
 	}
-	fs.gameVPKs = append(fs.gameVPKs, registeredVPK{path: path, vpk: *vpkFile})
+	fs.searchPaths = append(fs.searchPaths, searchPath{path: path, vpk: vpkFile})
 }
 
 func (fs *FileSystem) UnregisterVpk(path string) {
-	for idx := range fs.gameVPKs {
-		if fs.gameVPKs[idx].path == path {
-			fs.gameVPKs = append(fs.gameVPKs[:idx], fs.gameVPKs[idx+1:]...)
+	fs.unregister(path, true)
+}
+
+// RegisterLocalDirectory adds a directory to the end of the search paths. Registering a directory again keeps its
+// place.
+func (fs *FileSystem) RegisterLocalDirectory(directory string) {
+	realpath := strings.TrimRight(directory, "/")
+	for _, p := range fs.searchPaths {
+		if p.vpk == nil && p.path == realpath {
 			return
 		}
 	}
-}
-
-// RegisterLocalDirectory register a filesystem path as a valid
-// asset directory
-func (fs *FileSystem) RegisterLocalDirectory(directory string) {
-	realpath := directory
-	if strings.HasSuffix(realpath, "/") {
-		realpath = strings.TrimRight(realpath, "/")
-	}
-	fs.localDirectories = append(fs.localDirectories, realpath)
+	fs.searchPaths = append(fs.searchPaths, searchPath{path: realpath})
 }
 
 func (fs *FileSystem) UnregisterLocalDirectory(directory string) {
-	for idx, dir := range fs.localDirectories {
-		if dir == directory {
-			if len(fs.localDirectories) == 1 {
-				fs.localDirectories = make([]string, 0)
-				return
-			}
-			fs.localDirectories = append(fs.localDirectories[:idx], fs.localDirectories[idx+1:]...)
+	fs.unregister(strings.TrimRight(directory, "/"), false)
+}
+
+func (fs *FileSystem) unregister(path string, isVpk bool) {
+	for idx, p := range fs.searchPaths {
+		if p.path == path && (p.vpk != nil) == isVpk {
+			fs.searchPaths = append(fs.searchPaths[:idx], fs.searchPaths[idx+1:]...)
+			return
 		}
 	}
 }
@@ -98,22 +94,17 @@ func (fs *FileSystem) UnregisterPakFile() {
 	fs.pakFile = nil
 }
 
-// EnumerateResourcePaths returns all registered resource paths.
+// EnumerateResourcePaths returns all registered resource paths, in the order they are searched.
 // PakFile is excluded.
 func (fs *FileSystem) EnumerateResourcePaths() []string {
-	list := make([]string, 0)
-
-	for _, registered := range fs.gameVPKs {
-		list = append(list, registered.path)
+	list := make([]string, 0, len(fs.searchPaths))
+	for _, p := range fs.searchPaths {
+		list = append(list, p.path)
 	}
-
-	list = append(list, fs.localDirectories...)
-
 	return list
 }
 
-// GetFile attempts to get stream for filename.
-// Search order is Pak->FileSystem->VPK
+// GetFile returns a file from the first place that has it: the pakfile, then each search path in order.
 func (fs *FileSystem) GetFile(filename string) (io.Reader, error) {
 	// sanitise file
 	searchPath := NormalisePath(strings.ToLower(filename))
@@ -126,10 +117,16 @@ func (fs *FileSystem) GetFile(filename string) (io.Reader, error) {
 		}
 	}
 
-	// Fallback to local filesystem
-	for _, dir := range fs.localDirectories {
-		realpath := dir + "/" + searchPath
-		if _, err := os.Stat(realpath); os.IsNotExist(err) {
+	for _, p := range fs.searchPaths {
+		if p.vpk != nil {
+			if entry := p.vpk.Entry(searchPath); entry != nil {
+				return entry.Open()
+			}
+			continue
+		}
+
+		realpath := p.path + "/" + searchPath
+		if _, err := os.Stat(realpath); err != nil {
 			continue
 		}
 		file, err := os.ReadFile(realpath)
@@ -137,14 +134,6 @@ func (fs *FileSystem) GetFile(filename string) (io.Reader, error) {
 			return nil, err
 		}
 		return bytes.NewBuffer(file), nil
-	}
-
-	// Fall back to game vpk
-	for _, registered := range fs.gameVPKs {
-		entry := registered.vpk.Entry(searchPath)
-		if entry != nil {
-			return entry.Open()
-		}
 	}
 
 	return nil, NewFileNotFoundError(filename)

@@ -49,7 +49,7 @@ func TestRegisterLocalDirectory(t *testing.T) {
 	dir := "foo/bar/baz"
 	fs.RegisterLocalDirectory(dir)
 	found := false
-	for _, path := range fs.localDirectories {
+	for _, path := range fs.EnumerateResourcePaths() {
 		if path == dir {
 			found = true
 			break
@@ -66,7 +66,7 @@ func TestUnregisterLocalDirectory(t *testing.T) {
 	fs.RegisterLocalDirectory(dir)
 	fs.UnregisterLocalDirectory(dir)
 	found := false
-	for _, path := range fs.localDirectories {
+	for _, path := range fs.EnumerateResourcePaths() {
 		if path == dir {
 			found = true
 			break

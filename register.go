@@ -1,11 +1,19 @@
 package filesystem
 
 import (
+	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/galaco/KeyValues"
+)
+
+var (
+	gameInfoPathToken         = regexp.MustCompile(`(?i)\|gameinfo_path\|`)
+	allSourceEnginePathsToken = regexp.MustCompile(`(?i)\|all_source_engine_paths\|`)
+	vpkArchiveName            = regexp.MustCompile(`(?i)_[0-9]{3}\.vpk$`)
 )
 
 // CreateFilesystemFromGameInfoDefinitions Reads game resource data paths
@@ -14,6 +22,10 @@ import (
 // GameInfo definitions are quite unreliable, there are often bad entries;
 // allowInvalidLocations will skip over bad paths, and an error collection
 // will be returned will all paths that are invalid.
+//
+// Search paths are searched in the order gameinfo.txt lists them, as the engine does since SteamPipe: vpks and
+// directories are interleaved as listed. Only paths with the "game" path ID, which game content is loaded from, are
+// added. A path ending in "/*" adds each subdirectory and vpk of that directory, in alphabetical order.
 func CreateFilesystemFromGameInfoDefinitions(basePath string, gameInfo *keyvalues.KeyValue, allowInvalidLocations bool) (*FileSystem, error) {
 	fs := NewFileSystem()
 	var gameInfoNode *keyvalues.KeyValue
@@ -26,104 +38,119 @@ func CreateFilesystemFromGameInfoDefinitions(basePath string, gameInfo *keyvalue
 		return nil, ErrorInvalidGameInfo
 	}
 	fsNode, _ := gameInfoNode.Find("FileSystem")
-
+	if fsNode == nil {
+		return nil, ErrorInvalidGameInfo
+	}
 	searchPathsNode, _ := fsNode.Find("SearchPaths")
+	if searchPathsNode == nil {
+		return nil, ErrorInvalidGameInfo
+	}
 	searchPaths, _ := searchPathsNode.Children()
-	basePath, _ = filepath.Abs(basePath)
-	basePath = strings.Replace(basePath, "\\", "/", -1)
 
-	// @NOTE: Kind of hacky.
-	// extract the game directory from the base path (e.g. cstrike)
-	// This is assumed to be where the gameinfo is located.
-	// Will be used to avoid paths defined relative to the game dir.
-	basePathLastFolderIndex := strings.LastIndex(basePath, "/")
-	gameDir := ""
-	gameRootPath := basePath
-	if basePathLastFolderIndex != -1 {
-		gameDir = basePath[basePathLastFolderIndex+1:]
-		gameRootPath = strings.TrimSuffix(basePath, "/"+gameDir)
+	// basePath is the directory holding gameinfo.txt (e.g. cstrike). Relative search paths are relative to the
+	// directory above it, which holds every game directory (e.g. cstrike and hl2).
+	basePath, _ = filepath.Abs(basePath)
+	basePath = NormalisePath(basePath)
+	gameRootPath := filepath.ToSlash(filepath.Dir(basePath))
+
+	badPaths := NewInvalidResourcePathCollectionError()
+	addVpk := func(path string) error {
+		vpkFile, err := openVPK(path)
+		if err != nil {
+			if !allowInvalidLocations {
+				return err
+			}
+			badPaths.AddPath(path)
+			return nil
+		}
+		fs.RegisterVpk(path, vpkFile)
+		return nil
+	}
+	addDirectory := func(path string) error {
+		// The engine mounts a directory's pak01 vpk ahead of its loose files
+		if pak := path + "/pak01_dir.vpk"; fileExists(pak) {
+			if err := addVpk(pak); err != nil {
+				return err
+			}
+		}
+		fs.RegisterLocalDirectory(path)
+		return nil
 	}
 
-	badPathErrorCollection := NewInvalidResourcePathCollectionError()
-
-	for _, searchPath := range searchPaths {
-		kv := searchPath
+	for _, kv := range searchPaths {
+		if !hasPathID(kv.Key(), "game") {
+			continue
+		}
 		path, _ := kv.AsString()
-		path = strings.Trim(path, " ")
-
-		// Current directory
-		gameInfoPathRegex := regexp.MustCompile(`(?i)\|gameinfo_path\|`)
-		if gameInfoPathRegex.MatchString(path) {
-			path = gameInfoPathRegex.ReplaceAllString(path, basePath+"/")
-
-			// Search for vpk directories in the top directory. Cannot confirm if this is actually accurate behaviour,
-			// but CS:GO doesn't include any explicit vpk definitions in it's gameinfo.txt
-			vpkDirectories, _ := filepath.Glob(basePath + "/*_dir.vpk")
-			for _, key := range vpkDirectories {
-				vpkHandle, err := openVPK(strings.TrimRight(key, "_dir.vpk"))
-				if err != nil {
-					if !allowInvalidLocations {
-						return nil, err
-					}
-					badPathErrorCollection.AddPath(path)
-					continue
-				}
-				fs.RegisterVpk(key, vpkHandle)
-			}
+		path = strings.Trim(strings.TrimSpace(path), "\"")
+		path = gameInfoPathToken.ReplaceAllString(path, basePath+"/")
+		path = allSourceEnginePathsToken.ReplaceAllString(path, gameRootPath+"/")
+		path = NormalisePath(path)
+		if !isAbsolute(path) {
+			path = gameRootPath + "/" + path
 		}
 
-		// Executable directory
-		allSourceEnginePathsRegex := regexp.MustCompile(`(?i)\|all_source_engine_paths\|`)
-		if allSourceEnginePathsRegex.MatchString(path) {
-			path = allSourceEnginePathsRegex.ReplaceAllString(path, gameRootPath+"/")
+		var err error
+		switch {
+		case strings.HasSuffix(path, "/*"):
+			err = addWildcard(filepath.ToSlash(filepath.Clean(strings.TrimSuffix(path, "/*"))), addVpk, addDirectory)
+		case strings.HasSuffix(strings.ToLower(path), ".vpk"):
+			err = addVpk(filepath.ToSlash(filepath.Clean(path)))
+		default:
+			err = addDirectory(filepath.ToSlash(filepath.Clean(path)))
 		}
-
-		path = strings.TrimPrefix(path, gameDir+"/")
-
-		if strings.Contains(strings.ToLower(kv.Key()), "mod") && !strings.HasPrefix(path, basePath) {
-			path = basePath + "/" + path
-		}
-
-		path = strings.ReplaceAll(path, "//", "/")
-
-		// Strip vpk extension, then load it
-		path = strings.Trim(strings.Trim(path, " "), "\"")
-		if strings.HasSuffix(path, ".vpk") {
-			path = strings.Replace(path, ".vpk", "", 1)
-			vpkHandle, err := openVPK(path)
-			if err != nil {
-				if !allowInvalidLocations {
-					return nil, err
-				}
-				badPathErrorCollection.AddPath(path)
-				continue
-			}
-			fs.RegisterVpk(path, vpkHandle)
-		} else {
-			// wildcard suffixes not useful
-			if strings.HasSuffix(path, "/*") {
-				path = strings.Replace(path, "/*", "", -1)
-			}
-			// @TODO: handle relative paths properly
-			// For now, just assume non-absolute paths are relative to basePath
-			// Absolute paths start with / or \, or with a drive letter (X:/ or X:\) on Windows
-			if !((strings.HasPrefix(path, "/")) || (strings.HasPrefix(path, "\\")) || (len(path) > 3 && (path[1:3] == ":/" || path[1:3] == ":\\"))) {
-				path = basePath + "/" + path
-			}
-
-			// @TODO: Hack to fix the trailing '/.' current dir
-			path = strings.ReplaceAll(path, "/./", "/")
-			path = strings.TrimSuffix(path, "/.")
-
-			fs.RegisterLocalDirectory(path)
+		if err != nil {
+			return nil, err
 		}
 	}
 
 	// A filesystem can be valid, even if some GameInfo defined locations
 	// were not.
-	if allowInvalidLocations && len(badPathErrorCollection.paths) > 0 {
-		return fs, badPathErrorCollection
+	if len(badPaths.paths) > 0 {
+		return fs, badPaths
 	}
 
 	return fs, nil
+}
+
+// addWildcard adds each subdirectory and vpk of a directory, in alphabetical order. The numbered archives of a
+// multi-part vpk are read through its _dir.vpk.
+func addWildcard(directory string, addVpk, addDirectory func(string) error) error {
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		// A missing directory, such as an empty custom folder, has nothing to add
+		return nil
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return strings.ToLower(entries[i].Name()) < strings.ToLower(entries[j].Name())
+	})
+	for _, entry := range entries {
+		path := directory + "/" + entry.Name()
+		switch {
+		case entry.IsDir():
+			err = addDirectory(path)
+		case strings.HasSuffix(strings.ToLower(entry.Name()), ".vpk") && !vpkArchiveName.MatchString(entry.Name()):
+			err = addVpk(path)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// hasPathID returns whether a search path's key, such as "game+mod", includes a path ID
+func hasPathID(key string, pathID string) bool {
+	for _, id := range strings.Split(key, "+") {
+		if strings.EqualFold(strings.TrimSpace(id), pathID) {
+			return true
+		}
+	}
+	return false
+}
+
+// isAbsolute returns whether a path starts at a root: "/", "\", or a drive letter such as "C:/"
+func isAbsolute(path string) bool {
+	return strings.HasPrefix(path, "/") || strings.HasPrefix(path, "\\") ||
+		(len(path) > 2 && path[1] == ':' && (path[2] == '/' || path[2] == '\\'))
 }

@@ -43,8 +43,8 @@ func (err InvalidResourcePathCollectionError) Error() string {
 	return strings.Trim(msg, "|")
 }
 
-// AddPath adds a new path to this error colleciton
-func (err InvalidResourcePathCollectionError) AddPath(path string) {
+// AddPath adds a new path to this error collection
+func (err *InvalidResourcePathCollectionError) AddPath(path string) {
 	err.paths = append(err.paths, path)
 }
 
