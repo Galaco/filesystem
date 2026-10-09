@@ -1,6 +1,11 @@
 package filesystem
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+
+	"github.com/galaco/vpk2"
+)
 
 func TestGetFile(t *testing.T) {
 	t.Skip()
@@ -11,11 +16,32 @@ func TestRegisterPakfile(t *testing.T) {
 }
 
 func TestRegisterVpk(t *testing.T) {
-	t.Skip()
+	fs := NewFileSystem()
+	fs.RegisterVpk("b", &vpk.VPK{})
+	fs.RegisterVpk("a", &vpk.VPK{})
+	fs.RegisterVpk("c", &vpk.VPK{})
+	// Registering again keeps the original search order
+	fs.RegisterVpk("a", &vpk.VPK{})
+
+	expected := []string{"b", "a", "c"}
+	actual := fs.EnumerateResourcePaths()
+	if !reflect.DeepEqual(actual, expected) {
+		t.Errorf("expected vpks to be searched in order %v, got %v", expected, actual)
+	}
 }
 
 func TestUnregisterVpk(t *testing.T) {
-	t.Skip()
+	fs := NewFileSystem()
+	fs.RegisterVpk("a", &vpk.VPK{})
+	fs.RegisterVpk("b", &vpk.VPK{})
+	fs.RegisterVpk("c", &vpk.VPK{})
+	fs.UnregisterVpk("b")
+
+	expected := []string{"a", "c"}
+	actual := fs.EnumerateResourcePaths()
+	if !reflect.DeepEqual(actual, expected) {
+		t.Errorf("expected remaining vpks %v, got %v", expected, actual)
+	}
 }
 
 func TestRegisterLocalDirectory(t *testing.T) {

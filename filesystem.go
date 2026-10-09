@@ -16,15 +16,21 @@ type PakFile interface {
 // FileSystem implements a Source Engine style filesystem, prioritizing
 // pakfile, local directories, and vpk packages in that order.
 type FileSystem struct {
-	gameVPKs         map[string]vpk.VPK
+	// gameVPKs are searched in the order they were registered, which is the order gameinfo.txt lists them
+	gameVPKs         []registeredVPK
 	localDirectories []string
 	pakFile          PakFile
+}
+
+type registeredVPK struct {
+	path string
+	vpk  vpk.VPK
 }
 
 // NewFileSystem returns a new filesystem
 func NewFileSystem() *FileSystem {
 	return &FileSystem{
-		gameVPKs:         map[string]vpk.VPK{},
+		gameVPKs:         make([]registeredVPK, 0),
 		localDirectories: make([]string, 0),
 		pakFile:          nil,
 	}
@@ -37,15 +43,23 @@ func (fs *FileSystem) PakFile() PakFile {
 }
 
 // RegisterVpk registers a vpk package as a valid
-// asset directory
+// asset directory. Vpks are searched in the order they are registered;
+// registering a path again replaces it without changing its place.
 func (fs *FileSystem) RegisterVpk(path string, vpkFile *vpk.VPK) {
-	fs.gameVPKs[path] = *vpkFile
+	for idx := range fs.gameVPKs {
+		if fs.gameVPKs[idx].path == path {
+			fs.gameVPKs[idx].vpk = *vpkFile
+			return
+		}
+	}
+	fs.gameVPKs = append(fs.gameVPKs, registeredVPK{path: path, vpk: *vpkFile})
 }
 
 func (fs *FileSystem) UnregisterVpk(path string) {
-	for key := range fs.gameVPKs {
-		if key == path {
-			delete(fs.gameVPKs, key)
+	for idx := range fs.gameVPKs {
+		if fs.gameVPKs[idx].path == path {
+			fs.gameVPKs = append(fs.gameVPKs[:idx], fs.gameVPKs[idx+1:]...)
+			return
 		}
 	}
 }
@@ -89,8 +103,8 @@ func (fs *FileSystem) UnregisterPakFile() {
 func (fs *FileSystem) EnumerateResourcePaths() []string {
 	list := make([]string, 0)
 
-	for idx := range fs.gameVPKs {
-		list = append(list, string(idx))
+	for _, registered := range fs.gameVPKs {
+		list = append(list, registered.path)
 	}
 
 	list = append(list, fs.localDirectories...)
@@ -126,8 +140,8 @@ func (fs *FileSystem) GetFile(filename string) (io.Reader, error) {
 	}
 
 	// Fall back to game vpk
-	for _, vfs := range fs.gameVPKs {
-		entry := vfs.Entry(searchPath)
+	for _, registered := range fs.gameVPKs {
+		entry := registered.vpk.Entry(searchPath)
 		if entry != nil {
 			return entry.Open()
 		}
